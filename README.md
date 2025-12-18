@@ -39,6 +39,7 @@ npm run dev
 The included `Dockerfile` builds the worker and downloads the `pixlet` binary in the image.
 
 If rendering ever times out on Cloud Run, increase `PIXLET_RENDER_TIMEOUT_MS` (defaults to `30000`).
+If pushing ever times out, increase `TIDBYT_PUSH_TIMEOUT_MS` (defaults to `30000`).
 
 ### Option A: `gcloud run deploy` (manual)
 

@@ -12,6 +12,8 @@ const tidbytApiKey = process.env.TIDBYT_API_KEY || "";
 const tidbytDeviceId = process.env.TIDBYT_DEVICE_ID || "";
 const installationId = process.env.TIDBYT_INSTALLATION_ID || "effekt-donation-alert";
 const background = (process.env.TIDBYT_PUSH_BACKGROUND || "false") === "true";
+const tidbytPushTimeoutMsRaw = Number(process.env.TIDBYT_PUSH_TIMEOUT_MS || "30000");
+const tidbytPushTimeoutMs = Number.isFinite(tidbytPushTimeoutMsRaw) ? tidbytPushTimeoutMsRaw : 30_000;
 
 const pixletBin = process.env.PIXLET_BIN || "pixlet";
 const appletPath =
@@ -51,6 +53,7 @@ const batcher = new Batcher({
       image,
       installationId,
       background,
+      timeoutMs: tidbytPushTimeoutMs,
     });
   },
 });
@@ -134,5 +137,6 @@ const server = http.createServer((req, res) => {
 server.listen(port, () => {
   console.log(`[tidbyt-worker] Listening on :${port}`);
   console.log(`[tidbyt-worker] applet=${appletPath} pixlet=${pixletBin}`);
+  console.log(`[tidbyt-worker] pixlet timeout=${pixletTimeoutMs}ms tidbyt timeout=${tidbytPushTimeoutMs}ms`);
   console.log(`[tidbyt-worker] batching window=${batchWindowMs}ms max=${maxBatchWaitMs}ms`);
 });

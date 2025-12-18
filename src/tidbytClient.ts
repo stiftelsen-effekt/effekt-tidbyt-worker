@@ -13,7 +13,7 @@ export async function pushToTidbyt({
   image,
   installationId,
   background,
-  timeoutMs = 10_000,
+  timeoutMs = 30_000,
 }: TidbytPushOptions): Promise<void> {
   const url = `https://api.tidbyt.com/v0/devices/${encodeURIComponent(deviceId)}/push`;
 
@@ -42,4 +42,3 @@ export async function pushToTidbyt({
     clearTimeout(timeout);
   }
 }
-
