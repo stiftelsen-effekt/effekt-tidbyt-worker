@@ -11,6 +11,7 @@ This folder is intended to be its own repo. You can move it out of the backend r
 
 ## Endpoints
 
+- `GET /` (basic status/config)
 - `GET /healthz`
 - `POST /donations/confirmed` (expects JSON: `{ donationId, amount, timestamp }`)
 
@@ -36,6 +37,8 @@ npm run dev
 ## Deploy
 
 The included `Dockerfile` builds the worker and downloads the `pixlet` binary in the image.
+
+If rendering ever times out on Cloud Run, increase `PIXLET_RENDER_TIMEOUT_MS` (defaults to `30000`).
 
 ### Option A: `gcloud run deploy` (manual)
 

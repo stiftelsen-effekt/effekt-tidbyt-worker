@@ -11,7 +11,7 @@ export async function pixletRenderWebP({
   pixletBin,
   scriptPath,
   config,
-  timeoutMs = 5000,
+  timeoutMs = 30_000,
 }: PixletRenderOptions): Promise<Buffer> {
   const args = ["render", "--output", "-", "--silent", "--timeout", String(timeoutMs), scriptPath];
   for (const [key, value] of Object.entries(config)) {
@@ -35,4 +35,3 @@ export async function pixletRenderWebP({
     });
   });
 }
-

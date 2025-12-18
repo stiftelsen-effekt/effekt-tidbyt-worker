@@ -16,6 +16,8 @@ const background = (process.env.TIDBYT_PUSH_BACKGROUND || "false") === "true";
 const pixletBin = process.env.PIXLET_BIN || "pixlet";
 const appletPath =
   process.env.TIDBYT_PIXLET_APPLET || path.join(__dirname, "applets", "donation_alert.star");
+const pixletTimeoutMsRaw = Number(process.env.PIXLET_RENDER_TIMEOUT_MS || "30000");
+const pixletTimeoutMs = Number.isFinite(pixletTimeoutMsRaw) ? pixletTimeoutMsRaw : 30_000;
 
 const batchWindowMs = Number(process.env.TIDBYT_BATCH_WINDOW_MS || "8000");
 const maxBatchWaitMs = Number(process.env.TIDBYT_MAX_BATCH_WAIT_MS || "60000");
@@ -30,6 +32,7 @@ const batcher = new Batcher({
     const image = await pixletRenderWebP({
       pixletBin,
       scriptPath: appletPath,
+      timeoutMs: pixletTimeoutMs,
       config: {
         count: String(count),
         sum: String(Math.round(sum)),
@@ -82,6 +85,21 @@ function requireAuth(req: http.IncomingMessage, res: http.ServerResponse): boole
 
 const server = http.createServer((req, res) => {
   const url = req.url || "/";
+  if (req.method === "GET" && url === "/") {
+    return json(res, 200, {
+      ok: true,
+      endpoints: {
+        healthz: "/healthz",
+        donationsConfirmed: "/donations/confirmed",
+      },
+      configured: {
+        tidbytApiKey: Boolean(tidbytApiKey),
+        tidbytDeviceId: Boolean(tidbytDeviceId),
+        workerAuthEnabled: Boolean(authToken),
+      },
+      countryCode,
+    });
+  }
   if (req.method === "GET" && url === "/healthz") return json(res, 200, { ok: true });
 
   if (req.method === "POST" && url === "/donations/confirmed") {
