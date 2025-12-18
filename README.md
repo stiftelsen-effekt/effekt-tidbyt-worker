@@ -24,8 +24,9 @@ See `.env.example`.
 ### Device ID vs installation ID
 
 - `TIDBYT_DEVICE_ID` identifies which Tidbyt device to push to (required).
-- `TIDBYT_INSTALLATION_ID` is an optional stable identifier Tidbyt uses to group/replace pushes from the same "app installation".
-  - Tidbyt requires `installationID` to be alphanumeric; the worker will **sanitize** the env var/default by stripping non-alphanumeric characters before calling the Tidbyt API.
+- `TIDBYT_INSTALLATION_ID` is optional; the worker only includes it in the Tidbyt API request when `TIDBYT_PUSH_BACKGROUND=true`.
+  - Tidbyt requires `installationID` to be alphanumeric; the worker will sanitize the value by stripping non-alphanumeric characters.
+  - For ephemeral “show once” alerts, keep `TIDBYT_PUSH_BACKGROUND=false` (default) and you can leave `TIDBYT_INSTALLATION_ID` unset.
 
 ## Local render test (requires Pixlet installed)
 
@@ -52,6 +53,11 @@ If pushing ever times out, increase `TIDBYT_PUSH_TIMEOUT_MS` (defaults to `30000
 This service batches via timers. If you set `TIDBYT_WAIT_FOR_FLUSH=true` (default), the request stays open until flush completes, which makes it work even when Cloud Run is set to "CPU is only allocated during request handling".
 
 If you set `TIDBYT_WAIT_FOR_FLUSH=false` (fire-and-forget responses), you typically need "CPU always allocated" for the batch timer to run reliably.
+
+### Batching + dedupe semantics
+
+- **Batching:** each event contributes to an in-memory batch. A flush is scheduled for `lastEventAt + TIDBYT_BATCH_WINDOW_MS` (with a small minimum delay), but never later than `firstEventAt + TIDBYT_MAX_BATCH_WAIT_MS`.
+- **Dedupe:** `donationId` is cached in-memory for 1 hour. Re-sending the same `donationId` within that window returns `{"ok":true,"deduped":true}` and does not trigger another push.
 
 ### Option A: `gcloud run deploy` (manual)
 

@@ -25,10 +25,11 @@ const maxBatchWaitMs = Number(process.env.TIDBYT_MAX_BATCH_WAIT_MS || "60000");
 const countryCode = (process.env.EFFEKT_COUNTRY_CODE || "??").toUpperCase();
 const waitForFlush = (process.env.TIDBYT_WAIT_FOR_FLUSH || "true") === "true";
 
-const installationIdRaw = String(process.env.TIDBYT_INSTALLATION_ID || `effekt-donation-alert-${countryCode}`);
+const installationIdRaw = String(process.env.TIDBYT_INSTALLATION_ID || "");
 const installationIdSanitized = installationIdRaw.replace(/[^a-zA-Z0-9]/g, "").slice(0, 64);
 const installationId = installationIdSanitized.length > 0 ? installationIdSanitized : undefined;
-const installationIdWasSanitized = installationIdRaw !== installationIdSanitized;
+const installationIdWasSanitized = Boolean(installationIdRaw) && installationIdRaw !== installationIdSanitized;
+const installationIdForPush = background ? installationId : undefined;
 
 const batcher = new Batcher({
   batchWindowMs,
@@ -52,16 +53,16 @@ const batcher = new Batcher({
       throw new Error(`Rendered WebP too large (${image.byteLength} bytes)`);
     }
 
-    await pushToTidbyt({
-      apiKey: tidbytApiKey,
-      deviceId: tidbytDeviceId,
-      image,
-      installationId,
-      background,
-      timeoutMs: tidbytPushTimeoutMs,
-    });
-  },
-});
+	    await pushToTidbyt({
+	      apiKey: tidbytApiKey,
+	      deviceId: tidbytDeviceId,
+	      image,
+	      installationId: installationIdForPush,
+	      background,
+	      timeoutMs: tidbytPushTimeoutMs,
+	    });
+	  },
+	});
 
 function json(res: http.ServerResponse, code: number, body: any) {
   const data = Buffer.from(JSON.stringify(body));
@@ -100,16 +101,18 @@ const server = http.createServer((req, res) => {
         healthz: "/healthz",
         donationsConfirmed: "/donations/confirmed",
       },
-      configured: {
-        tidbytApiKey: Boolean(tidbytApiKey),
-        tidbytDeviceId: Boolean(tidbytDeviceId),
-        workerAuthEnabled: Boolean(authToken),
-        installationId: Boolean(installationId),
-        installationIdWasSanitized,
-      },
-      countryCode,
-    });
-  }
+	      configured: {
+	        tidbytApiKey: Boolean(tidbytApiKey),
+	        tidbytDeviceId: Boolean(tidbytDeviceId),
+	        workerAuthEnabled: Boolean(authToken),
+	        background,
+	        installationId: Boolean(installationId),
+	        installationIdForPush: Boolean(installationIdForPush),
+	        installationIdWasSanitized,
+	      },
+	      countryCode,
+	    });
+	  }
   if (req.method === "GET" && url === "/healthz") return json(res, 200, { ok: true });
 
   if (req.method === "POST" && url === "/donations/confirmed") {
@@ -135,18 +138,22 @@ const server = http.createServer((req, res) => {
       const evt = { donationId, amount, timestamp };
       if (!waitForFlush) {
         batcher.enqueue(evt);
-        return json(res, 200, { ok: true });
+        return json(res, 202, { ok: true, accepted: true });
       }
 
       const controller = new AbortController();
-      req.on("close", () => controller.abort());
       try {
+        req.on("aborted", () => controller.abort());
+        res.on("close", () => controller.abort());
+
         const snapshot = await batcher.enqueueAndWait(evt, controller.signal);
         if (res.writableEnded) return;
+        if (snapshot == null) return json(res, 200, { ok: true, deduped: true });
         return json(res, 200, { ok: true, flushed: snapshot });
-      } catch {
+      } catch (err) {
         if (res.writableEnded) return;
-        return json(res, 500, { ok: false });
+        const message = err instanceof Error ? err.message : "unknown error";
+        return json(res, 500, { ok: false, error: message });
       }
     });
     return;
@@ -155,13 +162,15 @@ const server = http.createServer((req, res) => {
   notFound(res);
 });
 
-server.listen(port, () => {
-  console.log(`[tidbyt-worker] Listening on :${port}`);
-  console.log(`[tidbyt-worker] applet=${appletPath} pixlet=${pixletBin}`);
-  console.log(`[tidbyt-worker] pixlet timeout=${pixletTimeoutMs}ms tidbyt timeout=${tidbytPushTimeoutMs}ms`);
-  if (installationIdWasSanitized) {
-    console.log(`[tidbyt-worker] installationId(raw)=${installationIdRaw}`);
-  }
-  console.log(`[tidbyt-worker] installationId=${installationId || "(none)"} background=${background && !!installationId}`);
-  console.log(`[tidbyt-worker] batching window=${batchWindowMs}ms max=${maxBatchWaitMs}ms`);
-});
+	server.listen(port, () => {
+	  console.log(`[tidbyt-worker] Listening on :${port}`);
+	  console.log(`[tidbyt-worker] applet=${appletPath} pixlet=${pixletBin}`);
+	  console.log(`[tidbyt-worker] pixlet timeout=${pixletTimeoutMs}ms tidbyt timeout=${tidbytPushTimeoutMs}ms`);
+	  if (installationIdWasSanitized) {
+	    console.log(`[tidbyt-worker] installationId(raw)=${installationIdRaw}`);
+	  }
+	  console.log(
+	    `[tidbyt-worker] installationId=${installationId || "(none)"} background=${background} includedInPush=${Boolean(installationIdForPush)}`,
+	  );
+	  console.log(`[tidbyt-worker] batching window=${batchWindowMs}ms max=${maxBatchWaitMs}ms`);
+	});

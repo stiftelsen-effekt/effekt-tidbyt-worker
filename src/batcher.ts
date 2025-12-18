@@ -40,9 +40,9 @@ export class Batcher {
     void this.enqueueInternal(evt);
   }
 
-  enqueueAndWait(evt: DonationEvent, signal?: AbortSignal): Promise<BatchSnapshot> {
+  enqueueAndWait(evt: DonationEvent, signal?: AbortSignal): Promise<BatchSnapshot | null> {
     const accepted = this.enqueueInternal(evt);
-    if (!accepted) return Promise.resolve({ count: 0, sum: 0 });
+    if (!accepted) return Promise.resolve(null);
 
     return new Promise<BatchSnapshot>((resolve, reject) => {
       const waiter: Waiter = { resolve, reject };
