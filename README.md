@@ -21,6 +21,12 @@ If `TIDBYT_WORKER_AUTH_TOKEN` is set, requests must include `Authorization: Bear
 
 See `.env.example`.
 
+### Device ID vs installation ID
+
+- `TIDBYT_DEVICE_ID` identifies which Tidbyt device to push to (required).
+- `TIDBYT_INSTALLATION_ID` is an optional stable identifier Tidbyt uses to group/replace pushes from the same "app installation".
+  - Tidbyt requires `installationID` to be alphanumeric; the worker will **sanitize** the env var/default by stripping non-alphanumeric characters before calling the Tidbyt API.
+
 ## Local render test (requires Pixlet installed)
 
 ```sh
