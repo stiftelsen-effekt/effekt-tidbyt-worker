@@ -10,7 +10,10 @@ const port = Number(process.env.PORT || "8080");
 const authToken = process.env.TIDBYT_WORKER_AUTH_TOKEN || "";
 const tidbytApiKey = process.env.TIDBYT_API_KEY || "";
 const tidbytDeviceId = process.env.TIDBYT_DEVICE_ID || "";
-const installationId = process.env.TIDBYT_INSTALLATION_ID || "effekt-donation-alert";
+const installationIdEnv = String(process.env.TIDBYT_INSTALLATION_ID || "").trim();
+const installationId =
+  installationIdEnv && /^[a-zA-Z0-9]+$/.test(installationIdEnv) ? installationIdEnv : undefined;
+const installationIdInvalid = Boolean(installationIdEnv) && !installationId;
 const background = (process.env.TIDBYT_PUSH_BACKGROUND || "false") === "true";
 const tidbytPushTimeoutMsRaw = Number(process.env.TIDBYT_PUSH_TIMEOUT_MS || "30000");
 const tidbytPushTimeoutMs = Number.isFinite(tidbytPushTimeoutMsRaw) ? tidbytPushTimeoutMsRaw : 30_000;
@@ -100,6 +103,8 @@ const server = http.createServer((req, res) => {
         tidbytApiKey: Boolean(tidbytApiKey),
         tidbytDeviceId: Boolean(tidbytDeviceId),
         workerAuthEnabled: Boolean(authToken),
+        installationId: Boolean(installationId),
+        installationIdInvalid,
       },
       countryCode,
     });
@@ -153,5 +158,12 @@ server.listen(port, () => {
   console.log(`[tidbyt-worker] Listening on :${port}`);
   console.log(`[tidbyt-worker] applet=${appletPath} pixlet=${pixletBin}`);
   console.log(`[tidbyt-worker] pixlet timeout=${pixletTimeoutMs}ms tidbyt timeout=${tidbytPushTimeoutMs}ms`);
+  if (installationIdInvalid) {
+    console.warn(
+      `[tidbyt-worker] TIDBYT_INSTALLATION_ID is invalid (must be alphanumeric), omitting it from push`,
+    );
+  } else if (installationId) {
+    console.log(`[tidbyt-worker] installationId=${installationId} background=${background}`);
+  }
   console.log(`[tidbyt-worker] batching window=${batchWindowMs}ms max=${maxBatchWaitMs}ms`);
 });
