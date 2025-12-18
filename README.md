@@ -13,7 +13,7 @@ This folder is intended to be its own repo. You can move it out of the backend r
 
 - `GET /` (basic status/config)
 - `GET /healthz`
-- `POST /donations/confirmed` (expects JSON: `{ donationId, amount, timestamp }`)
+- `POST /donations/confirmed` (expects JSON: `{ donationId, amount, timestamp }`) — by default this waits until the batch flush completes (render+push) before responding.
 
 If `TIDBYT_WORKER_AUTH_TOKEN` is set, requests must include `Authorization: Bearer <token>`.
 
@@ -40,6 +40,12 @@ The included `Dockerfile` builds the worker and downloads the `pixlet` binary in
 
 If rendering ever times out on Cloud Run, increase `PIXLET_RENDER_TIMEOUT_MS` (defaults to `30000`).
 If pushing ever times out, increase `TIDBYT_PUSH_TIMEOUT_MS` (defaults to `30000`).
+
+### Cloud Run CPU allocation
+
+This service batches via timers. If you set `TIDBYT_WAIT_FOR_FLUSH=true` (default), the request stays open until flush completes, which makes it work even when Cloud Run is set to "CPU is only allocated during request handling".
+
+If you set `TIDBYT_WAIT_FOR_FLUSH=false` (fire-and-forget responses), you typically need "CPU always allocated" for the batch timer to run reliably.
 
 ### Option A: `gcloud run deploy` (manual)
 

@@ -24,6 +24,7 @@ const pixletTimeoutMs = Number.isFinite(pixletTimeoutMsRaw) ? pixletTimeoutMsRaw
 const batchWindowMs = Number(process.env.TIDBYT_BATCH_WINDOW_MS || "8000");
 const maxBatchWaitMs = Number(process.env.TIDBYT_MAX_BATCH_WAIT_MS || "60000");
 const countryCode = (process.env.EFFEKT_COUNTRY_CODE || "??").toUpperCase();
+const waitForFlush = (process.env.TIDBYT_WAIT_FOR_FLUSH || "true") === "true";
 
 const batcher = new Batcher({
   batchWindowMs,
@@ -110,7 +111,7 @@ const server = http.createServer((req, res) => {
 
     const chunks: Buffer[] = [];
     req.on("data", (c) => chunks.push(Buffer.from(c)));
-    req.on("end", () => {
+    req.on("end", async () => {
       let body: any;
       try {
         body = JSON.parse(Buffer.concat(chunks).toString("utf8") || "{}");
@@ -125,8 +126,22 @@ const server = http.createServer((req, res) => {
       if (!Number.isFinite(donationId) || donationId <= 0) return badRequest(res);
       if (!Number.isFinite(amount) || amount <= 0) return badRequest(res);
 
-      batcher.enqueue({ donationId, amount, timestamp });
-      return json(res, 200, { ok: true });
+      const evt = { donationId, amount, timestamp };
+      if (!waitForFlush) {
+        batcher.enqueue(evt);
+        return json(res, 200, { ok: true });
+      }
+
+      const controller = new AbortController();
+      req.on("close", () => controller.abort());
+      try {
+        const snapshot = await batcher.enqueueAndWait(evt, controller.signal);
+        if (res.writableEnded) return;
+        return json(res, 200, { ok: true, flushed: snapshot });
+      } catch {
+        if (res.writableEnded) return;
+        return json(res, 500, { ok: false });
+      }
     });
     return;
   }

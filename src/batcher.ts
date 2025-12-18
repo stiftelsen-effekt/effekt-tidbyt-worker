@@ -9,6 +9,12 @@ export type BatchSnapshot = {
   sum: number;
 };
 
+type Waiter = {
+  resolve: (snapshot: BatchSnapshot) => void;
+  reject: (err: unknown) => void;
+  cleanup?: () => void;
+};
+
 export class Batcher {
   private count = 0;
   private sum = 0;
@@ -19,6 +25,7 @@ export class Batcher {
 
   // naive in-memory dedupe to avoid repeated pushes on retries
   private readonly seen = new Map<number, number>();
+  private readonly waiters = new Set<Waiter>();
 
   constructor(
     private readonly opts: {
@@ -30,15 +37,40 @@ export class Batcher {
   ) {}
 
   enqueue(evt: DonationEvent) {
+    void this.enqueueInternal(evt);
+  }
+
+  enqueueAndWait(evt: DonationEvent, signal?: AbortSignal): Promise<BatchSnapshot> {
+    const accepted = this.enqueueInternal(evt);
+    if (!accepted) return Promise.resolve({ count: 0, sum: 0 });
+
+    return new Promise<BatchSnapshot>((resolve, reject) => {
+      const waiter: Waiter = { resolve, reject };
+      this.waiters.add(waiter);
+
+      const onAbort = () => {
+        this.waiters.delete(waiter);
+        reject(new Error("request aborted"));
+      };
+
+      if (signal) {
+        if (signal.aborted) return onAbort();
+        signal.addEventListener("abort", onAbort, { once: true });
+        waiter.cleanup = () => signal.removeEventListener("abort", onAbort);
+      }
+    });
+  }
+
+  private enqueueInternal(evt: DonationEvent): boolean {
     const now = Date.now();
     this.gc(now);
 
     const existing = this.seen.get(evt.donationId);
-    if (existing && existing > now) return;
+    if (existing && existing > now) return false;
     this.seen.set(evt.donationId, now + this.opts.dedupeTtlMs);
 
     const amount = Number(evt.amount);
-    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount <= 0) return false;
 
     if (this.firstAt == null) this.firstAt = now;
     this.lastAt = now;
@@ -46,6 +78,7 @@ export class Batcher {
     this.sum += amount;
 
     this.scheduleFlush();
+    return true;
   }
 
   private gc(now: number) {
@@ -66,30 +99,39 @@ export class Batcher {
     this.flushTimer = setTimeout(() => void this.flush(), delay);
   }
 
-  private snapshotAndReset(): BatchSnapshot {
+  private snapshotAndReset(): { snapshot: BatchSnapshot; waiters: Waiter[] } {
     const snapshot = { count: this.count, sum: this.sum };
+    const waiters = Array.from(this.waiters);
+    this.waiters.clear();
     this.count = 0;
     this.sum = 0;
     this.firstAt = null;
     this.lastAt = null;
     if (this.flushTimer) clearTimeout(this.flushTimer);
     this.flushTimer = null;
-    return snapshot;
+    return { snapshot, waiters };
   }
 
   private async flush() {
     if (this.flushing) return;
     if (this.count === 0) return;
 
-    const snapshot = this.snapshotAndReset();
+    const { snapshot, waiters } = this.snapshotAndReset();
     this.flushing = true;
     try {
       await this.opts.onFlush(snapshot);
+      for (const waiter of waiters) {
+        waiter.cleanup?.();
+        waiter.resolve(snapshot);
+      }
     } catch (err) {
+      for (const waiter of waiters) {
+        waiter.cleanup?.();
+        waiter.reject(err);
+      }
       console.error("[tidbyt-worker] flush failed:", err);
     } finally {
       this.flushing = false;
     }
   }
 }
-
