@@ -4,6 +4,9 @@
   "private": true,
   "type": "commonjs",
   "main": "dist/index.js",
+  "engines": {
+    "node": ">=24"
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "build": "copyfiles -u 1 src/applets/**/*.star dist/ && tsc -p tsconfig.json",
@@ -12,7 +15,7 @@
   },
   "dependencies": {},
   "devDependencies": {
-    "@types/node": "^18.19.0",
+    "@types/node": "^24.0.0",
     "copyfiles": "^2.4.1",
     "cross-env": "^7.0.3",
     "nodemon": "^3.0.0",
@@ -20,4 +23,3 @@
     "typescript": "^5.4.0"
   }
 }
-
